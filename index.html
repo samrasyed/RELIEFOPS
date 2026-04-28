@@ -1949,6 +1949,15 @@
       return option ? option.label : skill.replace('_', ' ');
     }
 
+    function escapeHtml(value) {
+      return String(value)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    }
+
     function searchTaskLocation() {
       const input = document.getElementById('f-location');
       const results = document.getElementById('location-results');
@@ -1962,14 +1971,20 @@
       }
       locationSearchTimer = setTimeout(async () => {
         try {
-          const url = `/api/data?query=${encodeURIComponent(query)}`;
-          const res = await fetch(url);
+          const place = encodeURIComponent(query);
+          const res = await fetch(`/api/data?query=${place}`);
           const data = await res.json();
-          const places = data.features || [];
+          console.log('Geoapify API response:', data);
+
+          if (!res.ok) {
+            throw new Error(data.error || data.details || 'Location search failed');
+          }
+
+          const places = Array.isArray(data.features) ? data.features : [];
           taskLocationResults = places;
           if (!places.length) {
             results.classList.remove('hidden');
-            results.innerHTML = '<button class="location-option" type="button">No India locations found.</button>';
+            results.innerHTML = '<button class="location-option" type="button">No matching India locations found.</button>';
             return;
           }
           results.classList.remove('hidden');
@@ -1977,12 +1992,14 @@
             const props = place.properties || {};
             return `
         <button class="location-option" type="button" onclick="selectTaskLocationByIndex(${index})">
-          ${props.formatted || props.address_line1 || 'Unnamed place'}
+          ${escapeHtml(props.formatted || props.address_line1 || 'Unnamed place')}
         </button>
       `}).join('');
-        } catch {
+        } catch (error) {
+          console.error('Geoapify search failed:', error);
           results.classList.remove('hidden');
-          results.innerHTML = '<button class="location-option" type="button">Location search failed. Try again.</button>';
+          const message = escapeHtml(error.message || 'Location search failed. Try again.');
+          results.innerHTML = `<button class="location-option" type="button">${message}</button>`;
         }
       }, 350);
     }
@@ -1995,9 +2012,14 @@
     function selectTaskLocation(place) {
       selectedTaskPlace = place;
       const props = place.properties || {};
-      const coords = place.geometry?.coordinates || [0, 0];
+      const coords = place.geometry?.coordinates || [];
       const lon = coords[0];
       const lat = coords[1];
+      if (!Number.isFinite(Number(lat)) || !Number.isFinite(Number(lon))) {
+        console.error('Selected place is missing valid coordinates:', place);
+        toast('Selected location has no coordinates.', 'error');
+        return;
+      }
       
       document.getElementById('f-location').value = props.formatted || props.address_line1 || '';
       document.getElementById('f-lat').value = Number(lat).toFixed(6);
@@ -2368,9 +2390,7 @@
       <span class="status-tag s-${task.status}">${volunteerStatusLabel(task.status)}</span>
     </div>
     <div class="map-preview" style="margin-bottom:16px">
-      ${hasGeoapifyKey()
-          ? `<img src="https://maps.geoapify.com/v1/staticmap?style=osm-bright&width=720&height=260&center=lonlat:${task.longitude},${task.latitude}&zoom=14&marker=lonlat:${task.longitude},${task.latitude};color:%2322d3a0;size:medium&apiKey=${GEOAPIFY_API_KEY}" alt="${placeName(task)} map" />`
-          : `Location: ${placeName(task)} (${Number(task.latitude).toFixed(4)}, ${Number(task.longitude).toFixed(4)})`}
+      <iframe src="https://www.openstreetmap.org/export/embed.html?bbox=${Number(task.longitude) - 0.01},${Number(task.latitude) - 0.01},${Number(task.longitude) + 0.01},${Number(task.latitude) + 0.01}&layer=mapnik&marker=${task.latitude},${task.longitude}" width="100%" height="260" frameborder="0" style="border:0; border-radius: 8px;" title="${placeName(task)} map"></iframe>
     </div>
     ${task.status === 'invite_pending' ? `
       <div class="suggestion" style="margin-bottom:16px">
