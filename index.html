@@ -1977,7 +1977,8 @@
           console.log('Geoapify API response:', data);
 
           if (!res.ok) {
-            throw new Error(data.error || data.details || 'Location search failed');
+            const detail = data.details ? `: ${data.details}` : '';
+            throw new Error(`${data.error || 'Location search failed'}${detail}`);
           }
 
           const places = Array.isArray(data.features) ? data.features : [];

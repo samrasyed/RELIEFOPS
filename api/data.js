@@ -30,7 +30,7 @@ export default async function handler(req, res) {
       return res.status(response.status).json({
         error: 'Geoapify request failed',
         status: response.status,
-        details: data?.message || data?.error || 'No error details returned',
+        details: data?.message || data?.error || data?.statusCode || 'No error details returned',
       });
     }
 
