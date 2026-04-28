@@ -1715,7 +1715,6 @@
   <script>
     // ── Config ──────────────────────────────────────────────
     const API = '/api';
-    const GEOAPIFY_API_KEY = '';
     let ws = null;
     let allNgos = [];
     let allTasks = [];
@@ -1950,10 +1949,6 @@
       return option ? option.label : skill.replace('_', ' ');
     }
 
-    function hasGeoapifyKey() {
-      return GEOAPIFY_API_KEY && !GEOAPIFY_API_KEY.includes('PASTE_YOUR');
-    }
-
     function searchTaskLocation() {
       const input = document.getElementById('f-location');
       const results = document.getElementById('location-results');
@@ -1965,17 +1960,12 @@
         results.innerHTML = '';
         return;
       }
-      if (!hasGeoapifyKey()) {
-        results.classList.remove('hidden');
-        results.innerHTML = '<button class="location-option" type="button">Add your Geoapify API key in GEOAPIFY_API_KEY to enable map search.</button>';
-        return;
-      }
       locationSearchTimer = setTimeout(async () => {
         try {
-          const url = `https://api.geoapify.com/v1/geocode/autocomplete?text=${encodeURIComponent(query)}&filter=countrycode:in&limit=6&format=json&apiKey=${GEOAPIFY_API_KEY}`;
+          const url = `/api/data?query=${encodeURIComponent(query)}`;
           const res = await fetch(url);
           const data = await res.json();
-          const places = data.results || [];
+          const places = data.features || [];
           taskLocationResults = places;
           if (!places.length) {
             results.classList.remove('hidden');
@@ -1983,11 +1973,13 @@
             return;
           }
           results.classList.remove('hidden');
-          results.innerHTML = places.map((place, index) => `
+          results.innerHTML = places.map((place, index) => {
+            const props = place.properties || {};
+            return `
         <button class="location-option" type="button" onclick="selectTaskLocationByIndex(${index})">
-          ${place.formatted || place.address_line1 || 'Unnamed place'}
+          ${props.formatted || props.address_line1 || 'Unnamed place'}
         </button>
-      `).join('');
+      `}).join('');
         } catch {
           results.classList.remove('hidden');
           results.innerHTML = '<button class="location-option" type="button">Location search failed. Try again.</button>';
@@ -2002,23 +1994,24 @@
 
     function selectTaskLocation(place) {
       selectedTaskPlace = place;
-      document.getElementById('f-location').value = place.formatted || place.address_line1 || '';
-      document.getElementById('f-lat').value = Number(place.lat).toFixed(6);
-      document.getElementById('f-lon').value = Number(place.lon).toFixed(6);
-      document.getElementById('selected-place').textContent = place.formatted || 'Selected location';
+      const props = place.properties || {};
+      const coords = place.geometry?.coordinates || [0, 0];
+      const lon = coords[0];
+      const lat = coords[1];
+      
+      document.getElementById('f-location').value = props.formatted || props.address_line1 || '';
+      document.getElementById('f-lat').value = Number(lat).toFixed(6);
+      document.getElementById('f-lon').value = Number(lon).toFixed(6);
+      document.getElementById('selected-place').textContent = props.formatted || 'Selected location';
       document.getElementById('location-results').classList.add('hidden');
-      renderMapPreview(place.lat, place.lon);
+      renderMapPreview(lat, lon);
     }
 
     function renderMapPreview(lat, lon) {
       const preview = document.getElementById('map-preview');
-      if (!hasGeoapifyKey()) {
-        preview.textContent = 'Map preview needs a Geoapify API key.';
-        return;
-      }
-      const marker = `lonlat:${lon},${lat};color:%2322d3a0;size:medium`;
-      const src = `https://maps.geoapify.com/v1/staticmap?style=osm-bright&width=640&height=260&center=lonlat:${lon},${lat}&zoom=14&marker=${marker}&apiKey=${GEOAPIFY_API_KEY}`;
-      preview.innerHTML = `<img src="${src}" alt="Selected task location map" />`;
+      const offset = 0.01;
+      const src = `https://www.openstreetmap.org/export/embed.html?bbox=${lon-offset},${lat-offset},${lon+offset},${lat+offset}&layer=mapnik&marker=${lat},${lon}`;
+      preview.innerHTML = `<iframe src="${src}" width="100%" height="260" frameborder="0" style="border:0; border-radius: 8px;"></iframe>`;
     }
 
     function placeName(task) {
